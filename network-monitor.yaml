@@ -2,6 +2,15 @@ esphome:
   name: network-monitor
   platform: ESP32
   board: featheresp32
+    # Power up server when power restored # 
+  on_boot:
+    priority: -100.0
+    then:
+      if:
+        condition:
+          binary_sensor.is_off: proxmox_status
+        then:
+          - switch.turn_on: power_on
 logger:
 api:
 ota:
@@ -252,10 +261,6 @@ binary_sensor:
       number: GPIO13
       mode: input_pullup
       inverted: true
-    # Power up server after power has been restored #  
-    on_press:
-      then:
-        - switch.turn_on: power_on
 
     # Onboard Buttons #
   - platform: gpio
