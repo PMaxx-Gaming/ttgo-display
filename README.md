@@ -11,5 +11,6 @@ I'm also using the [Local IP](https://www.home-assistant.io/integrations/local_i
 
 It should be pretty simple to customize this to use whichever integrations you prefer, and as this is just the first version of this code, I do plan on adjusting things to get as much sensor data from outside of Home Assistant as possible to make the sensors a little more robust- in case HA goes down for some reason.
 
-https://imgur.com/kh35mCf
-https://imgur.com/rDfZmYz
+<img src=https://imgur.com/kh35mCf>
+<br>
+<img src=https://imgur.com/rDfZmYz>
