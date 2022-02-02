@@ -1,0 +1,385 @@
+esphome:
+  name: network-monitor
+  platform: ESP32
+  board: featheresp32
+logger:
+api:
+ota:
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Network Monitor Fallback Hotspot"
+    password: !secret wifi_password
+captive_portal:
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+time:
+  - platform: homeassistant
+    id: esptime
+
+
+    ##### FONTS #####
+
+font:
+    # Footer Text #
+  - file: 'fonts/calibri.ttf'
+    id: calibri_14
+    size: 14
+    
+    # Header Text #
+  - file: 'fonts/calibri.ttf'
+    id: calibri_24
+    size: 24
+    
+    # Sensor Value #
+  - file: 'fonts/calibri.ttf'
+    id: calibri_36
+    size: 36
+      
+    # Main Icons #  
+  - file: 'fonts/mdi.ttf'
+    id: mdi_36
+    size: 36
+    glyphs: [
+      "󰌗", #LAN
+      "󰖟", #WAN
+      "󰖩", #WiFi
+      "󰧇", #Upload
+      "󰦿", #Download
+      "󰻃", #Unifi Controller
+      "󰓅", #Ping
+      "󰕥", #AdGuard
+      "󰦀", #DNS Blocked
+      "󰍉", #DNS Queries
+      ]
+    
+    # Network Status Icons #
+  - file: 'fonts/mdi.ttf'
+    id: mdi_24
+    size: 24
+    glyphs: [
+      "󰛉", #Proxmox
+      "󰟐", #Home Assistant
+      "󰖟", #WAN
+      "󰕥", #AdGuard
+      "󰅙", #Offline
+      "󰗠", #Online
+      ]
+
+
+    ##### COLORS #####
+
+color:
+    # Header/Footer #
+  - id: display_grey
+    red: 50%
+    green: 50%
+    blue: 50%
+    
+    # Main Text #
+  - id: display_white
+    red: 85%
+    green: 85%
+    blue: 85%
+    
+    # Icons/Dividers #
+  - id: display_darkgrey
+    red: 25%
+    green: 25%
+    blue: 25%
+    
+    # Online #
+  - id: display_green
+    red: 0%
+    green: 100%
+    blue: 0%
+    
+    # Offline #
+  - id: display_red
+    red: 100%
+    green: 0%
+    blue: 0%
+    
+    # Proxmox #
+  - id: display_orange
+    red: 90%
+    green: 51%
+    blue: 2%
+    
+    # Home Assistant #
+  - id: display_lightblue
+    red: 21%
+    green: 78%
+    blue: 100%
+    
+    # WAN #
+  - id: display_medblue
+    red: 29%
+    green: 50%
+    blue: 88%
+    
+    # AdGuard #
+  - id: display_darkgreen
+    red: 0%
+    green: 57%
+    blue: 15%
+    
+
+    ##### SWITCHES #####    
+    
+switch:
+    # Display ON/OFF #
+  - platform: gpio
+    name: "Backlight"
+    id: backlight  
+    pin: GPIO4 
+    icon: "mdi:white-balance-sunny"
+    restore_mode: restore_default_on
+
+    # Proxmox Server Power Switch #
+  - platform: gpio
+    name: "Power ON"
+    id: power_on
+    pin: GPIO27
+    icon: "mdi:power"
+    on_turn_on:
+    - delay: 1000ms
+    - switch.turn_off: power_on
+  - platform: gpio
+    name: "Power OFF"
+    id: power_off
+    pin: GPIO27
+    icon: "mdi:power"
+    on_turn_on:
+    - delay: 5000ms
+    - switch.turn_off: power_off      
+
+
+    ##### SENSORS #####
+
+text_sensor:
+  - platform: homeassistant
+    entity_id: sensor.local_ip
+    name: "Unifi Controller IP"
+    id: unifi_ip
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: binary_sensor.internet_status
+    name: "WAN Status"
+    id: wan_status
+    internal: true
+  
+  - platform: homeassistant
+    entity_id: switch.adguard_filtering
+    name: "AdGuard Filtering"
+    id: adguard_switch
+    internal: true
+
+sensor: 
+  - platform: homeassistant
+    entity_id: sensor.adguard_average_processing_speed
+    name: "AdGuard Processing Speed"
+    id: adguard_speed
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: sensor.adguard_dns_queries
+    filters:
+      - multiply: 0.001
+    name: "AdGuard Queries"
+    id: adguard_queries
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: sensor.unifi_gateway_lan
+    attribute: num_user
+    name: "Unifi LAN Devices"
+    id: unifi_lan_devices
+    internal: true
+  
+  - platform: homeassistant
+    entity_id: sensor.unifi_gateway_wlan
+    attribute: num_user
+    name: "Unifi WLAN Devices"
+    id: unifi_wlan_devices
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: sensor.speedtest_download
+    name: "Download Speed"
+    unit_of_measurement: "Mbit/s"
+    id: download_speed
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: sensor.speedtest_upload
+    name: "Upload Speed"
+    unit_of_measurement: "Mbit/s"
+    id: upload_speed
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: sensor.ping
+    name: "Ping"
+    unit_of_measurement: "ms"
+    id: ping
+    internal: true
+    
+  - platform: homeassistant
+    entity_id: sensor.adguard_dns_queries_blocked_ratio
+    name: "DNS Queries Blocked"
+    unit_of_measurement: "%"
+    id: dns_blocked
+    internal: true
+
+
+    ##### Server Status and Onboard Buttons #####
+
+binary_sensor:
+  - platform: status
+    name: "Home Assistant Server Status"
+    id: ha_status  
+    internal: true
+
+  - platform: gpio
+    name: "Proxmox Server Status"
+    id: proxmox_status
+    internal: true
+    pin:
+      number: GPIO13
+      mode: input_pullup
+      inverted: true
+    # Power up server after power has been restored #  
+    on_press:
+      then:
+        - switch.turn_on: power_on
+
+    # Onboard Buttons #
+  - platform: gpio
+    name: "Button 1"
+    id: button_1
+    internal: true
+    pin:
+      number: GPIO0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+        - display.page.show_previous: proxmox_display
+        - component.update: proxmox_display        
+        
+  - platform: gpio
+    name: "Button 2"
+    id: button_2
+    internal: true
+    pin:
+      number: GPIO35
+      inverted: true
+    on_press:
+      then:
+        - display.page.show_next: proxmox_display
+        - component.update: proxmox_display        
+
+
+    ##### DISPLAY #####
+
+display:
+  - platform: st7789v
+    backlight_pin: GPIO4
+    cs_pin: GPIO5
+    dc_pin: GPIO16
+    reset_pin: GPIO23
+### DO NOT CHANGE VALUES ABOVE THIS LINE ###
+    rotation: 90°
+    update_interval: 5s
+    id: proxmox_display
+    
+    pages:
+      - id: page1 ### Main Page ###
+        lambda: |-
+          it.print(30, 5, id(mdi_36), id(display_white), "󰻃");
+          it.printf(70, 12, id(calibri_24), id(display_grey), "%s", id(unifi_ip).state.c_str());  
+          it.print(5, 40, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰦿");
+          it.printf(45, 43, id(calibri_36), id(display_white), TextAlign::LEFT, "%.1f", id(download_speed).state);
+          it.print(235, 40, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰧇");
+          it.printf(195, 43, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.1f", id(upload_speed).state);
+          it.line(5, 80, 235, 80, id(display_darkgrey));
+          it.print(5, 90, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰌗" );
+          it.printf(45, 93, id(calibri_36), id(display_white), TextAlign::LEFT, "%.0f", id(unifi_lan_devices).state);
+          it.print(235, 90, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰖩" );
+          it.printf(195, 93, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.0f", id(unifi_wlan_devices).state);
+          
+      - id: page2 ### Performance ###
+        lambda: |-
+          it.print(30, 5, id(mdi_36), id(display_white), "󰖟");
+          it.print(70, 12, id(calibri_24), id(display_grey), "Performance");
+          it.print(235, 40, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰓅");
+          it.printf(195, 43, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.0fms", id(ping).state);
+          it.line(5, 80, 235, 80, id(display_darkgrey));
+          it.print(5, 90, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰦿");
+          it.printf(45, 93, id(calibri_36), id(display_white), TextAlign::LEFT, "%.1f", id(download_speed).state);
+          it.print(235, 90, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰧇");
+          it.printf(195, 93, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.1f", id(upload_speed).state);
+          
+      - id: page3 ### AdGuard Home ###
+        lambda: |-
+          it.print(30, 5, id(mdi_36), id(display_white), "󰕥");
+          it.print(70, 12, id(calibri_24), id(display_grey), "AdGuard Home");
+          it.print(235, 40, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰦀");
+          it.printf(195, 43, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.1f%%", id(dns_blocked).state);
+          it.line(5, 80, 235, 80, id(display_darkgrey));
+          it.print(5, 90, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰓅" );
+          it.printf(45, 98, id(calibri_24), id(display_white), TextAlign::LEFT, "%.0fms", id(adguard_speed).state);
+          it.print(235, 90, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰍉" );
+          it.printf(195, 98, id(calibri_24), id(display_white), TextAlign::RIGHT, "%.1fk", id(adguard_queries).state);
+          
+      
+      - id: page4 ### Network Info ###
+        lambda: |-
+          it.line(200, 5, 200, 115, id(display_darkgrey));
+          it.line(5, 115, 235, 115, id(display_darkgrey));
+          it.print(5,5, id(mdi_24), id(display_orange), "󰛉");
+          it.print(30, 7, id(calibri_24), id(display_white), "Proxmox Server");
+          if (id(proxmox_status).state) {
+            it.print(235, 5, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+          }
+          else {
+            it.print(235, 5, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+          }
+          
+          it.print(5,32, id(mdi_24), id(display_lightblue), "󰟐");
+          it.print(30, 34, id(calibri_24), id(display_white), "Home Assistant");
+          if (id(ha_status).state) {
+            it.print(235, 32, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+          }
+          else {
+            it.print(235, 32, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+          }
+      
+          it.print(5,59, id(mdi_24), id(display_medblue), "󰖟");
+          it.print(30, 61, id(calibri_24), id(display_white), "WAN Status");      
+          if (id(wan_status).state == "on") {
+            it.print(235, 59, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+          }
+          else {
+            it.print(235, 59, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+          }
+      
+          it.print(5,86, id(mdi_24), id(display_darkgreen), "󰕥");
+          it.print(30, 88, id(calibri_24), id(display_white), "AdGuard Home");    
+          if (id(adguard_switch).state == "on") {
+            it.print(235, 86, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+          }
+          else {
+            it.print(235, 86, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+          }
+          
+          it.printf(120, 125, id(calibri_14), id(display_grey), TextAlign::CENTER, " Controller IP: %s", id(unifi_ip).state.c_str());   
+
+
+      
