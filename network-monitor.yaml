@@ -1,3 +1,20 @@
+substitutions:
+  unificontroller: https://192.168.1.100:8443 #SET THIS TO THE IP AND PORT OF YOUR UNIFI CONTROLLER
+  icon_lan: 󰌗
+  icon_wan: 󰖟
+  icon_wlan: 󰖩
+  icon_upload: 󰧇
+  icon_download: 󰦿
+  icon_unifi: 󰻃
+  icon_speed: 󰓅
+  icon_adguard: 󰕥
+  icon_dnsblocked: 󰦀
+  icon_dnsqueries: 󰍉
+  icon_proxmox: 󰛉
+  icon_homeassistant: 󰟐
+  icon_online: 󰗠
+  icon_offline: 󰅙 
+  
 esphome:
   name: network-monitor
   platform: ESP32
@@ -12,7 +29,10 @@ esphome:
         then:
           - switch.turn_on: power_on
 logger:
+  logs:
+    ping_esp32: WARN
 api:
+captive_portal:
 ota:
 wifi:
   ssid: !secret wifi_ssid
@@ -20,15 +40,43 @@ wifi:
   ap:
     ssid: "Network Monitor Fallback Hotspot"
     password: !secret wifi_password
-captive_portal:
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO19
+  
 time:
-  - platform: homeassistant
+  - platform: sntp
     id: esptime
+    on_time: ### WORK IN PROGRESS - This action logs into the Unifi Controller API, but doesn't do anything yet
+      - seconds: 0
+        minutes: /1    
+        then:    
+          - http_request.post:
+              url: ${unificontroller}/api/login
+              verify_ssl: false
+              headers:
+                Content-Type: application/json
+              json: |-
+                root["username"] = "YOUR_USERNAME";
+                root["password"] = "YOUR_PASSWORD";
+              on_response:
+                then:
+                  - if:
+                      condition:
+                        lambda: |-
+                          return status_code == 200;
+                      then:
+                        - logger.log:
+                            level: INFO
+                            format: "!! CONNECTION TO UNIFI CONTROLLER SUCCEEDED !!"
+                        - lambda: "id(unifi_api).publish_state(true);"
+                      else:
+                        - logger.log:
+                            level: INFO
+                            format: "!! CONNECTION TO UNIFI CONTROLLER FAILED !!"
+                        - lambda: "id(unifi_api).publish_state(false);"
 
-
+    
     ##### FONTS #####
 
 font:
@@ -54,7 +102,7 @@ font:
     glyphs: [
       "󰌗", #LAN
       "󰖟", #WAN
-      "󰖩", #WiFi
+      "󰖩", #WLAN
       "󰧇", #Upload
       "󰦿", #Download
       "󰻃", #Unifi Controller
@@ -82,55 +130,55 @@ font:
 
 color:
     # Header/Footer #
-  - id: display_grey
+  - id: grey
     red: 50%
     green: 50%
     blue: 50%
     
     # Main Text #
-  - id: display_white
+  - id: white
     red: 85%
     green: 85%
     blue: 85%
     
     # Icons/Dividers #
-  - id: display_darkgrey
+  - id: darkgrey
     red: 25%
     green: 25%
     blue: 25%
     
     # Online #
-  - id: display_green
+  - id: green
     red: 0%
     green: 100%
     blue: 0%
     
     # Offline #
-  - id: display_red
+  - id: red
     red: 100%
     green: 0%
     blue: 0%
     
     # Proxmox #
-  - id: display_orange
+  - id: orange
     red: 90%
     green: 51%
     blue: 2%
     
     # Home Assistant #
-  - id: display_lightblue
+  - id: lightblue
     red: 21%
     green: 78%
     blue: 100%
     
     # WAN #
-  - id: display_medblue
+  - id: medblue
     red: 29%
     green: 50%
     blue: 88%
     
     # AdGuard #
-  - id: display_darkgreen
+  - id: darkgreen
     red: 0%
     green: 57%
     blue: 15%
@@ -174,12 +222,6 @@ text_sensor:
     name: "Unifi Controller IP"
     id: unifi_ip
     internal: true
-    
-  - platform: homeassistant
-    entity_id: binary_sensor.internet_status
-    name: "WAN Status"
-    id: wan_status
-    internal: true
   
   - platform: homeassistant
     entity_id: switch.adguard_filtering
@@ -188,6 +230,29 @@ text_sensor:
     internal: true
 
 sensor: 
+  - platform: template
+    name: "Number of Wireless Clients" ### WORK IN PROGRESS - This sensor isn't used yet
+    id: clients_wireless
+    
+  - platform: template
+    name: "Number of Wired Clients" ### WORK IN PROGRESS - This sensor isn't used yet
+    id: clients_wired
+    
+  - platform: ping
+    ip_address: 8.8.8.8 #Change to any IP address you'd like to ping; this one is Cloudflare
+    num_attempts: 5
+    timeout: 1sec
+    update_interval: 5s
+    loss:
+      name: "Packet loss"
+    latency:
+      name: "Latency"
+      unit_of_measurement: ms
+      accuracy_decimals: 3
+      id: esp_ping
+      filters:
+       - multiply: 1000
+       
   - platform: homeassistant
     entity_id: sensor.adguard_average_processing_speed
     name: "AdGuard Processing Speed"
@@ -231,13 +296,6 @@ sensor:
     internal: true
     
   - platform: homeassistant
-    entity_id: sensor.ping
-    name: "Ping"
-    unit_of_measurement: "ms"
-    id: ping
-    internal: true
-    
-  - platform: homeassistant
     entity_id: sensor.adguard_dns_queries_blocked_ratio
     name: "DNS Queries Blocked"
     unit_of_measurement: "%"
@@ -248,11 +306,53 @@ sensor:
     ##### Server Status and Onboard Buttons #####
 
 binary_sensor:
+  - platform: template
+    name: "Internet Connection"
+    id: wan_status
+    on_press:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! INTERNET IS CONNECTED !!"
+    on_release:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! INTERNET IS DISCONNECTED !!"
+    lambda: |-
+      if (id(esp_ping).state > 0) {
+        return true;
+      } else {
+        return false;
+      }  
+        
   - platform: status
     name: "Home Assistant Server Status"
     id: ha_status  
     internal: true
-
+    on_press:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! CONNECTION TO HOME ASSISTANT HAS BEEN ESTABLISHED !!"
+    on_release:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! CONNECTION TO HOME ASSISTANT HAS BEEN LOST !!"
+  
+    - platform: template
+    name: "Unifi API Connection" ### WORK IN PROGRESS - The following lambda doesn't cause any errors, but is a placeholder
+    id: unifi_api
+    on_press:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! SENDING NETWORK CLIENT COUNTS !!"
+        - lambda: |-
+            id(clients_wireless).publish_state(id(unifi_wlan_devices).state);
+            id(clients_wired).publish_state(id(unifi_lan_devices).state);
+  
   - platform: gpio
     name: "Proxmox Server Status"
     id: proxmox_status
@@ -261,23 +361,20 @@ binary_sensor:
       number: GPIO13
       mode: input_pullup
       inverted: true
-
-    # Onboard Buttons #
-  - platform: gpio
-    name: "Button 1"
-    id: button_1
-    internal: true
-    pin:
-      number: GPIO0
-      inverted: true
-      mode:
-        input: true
-        pullup: true
     on_press:
       then:
-        - display.page.show_previous: proxmox_display
-        - component.update: proxmox_display        
-        
+        - logger.log:
+            level: INFO
+            format: "!! PROXMOX SERVER POWER HAS BEEN RESTORED !!"
+    on_release:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! PROXMOX SERVER HAS SHUT DOWN !!"
+        - delay: 3000ms
+        - switch.turn_on: power_on
+      
+    # Onboard Buttons #
   - platform: gpio
     name: "Button 2"
     id: button_2
@@ -285,6 +382,31 @@ binary_sensor:
     pin:
       number: GPIO35
       inverted: true
+    on_click:
+      - min_length: 1500ms
+        max_length: 3000ms
+        then:
+          - switch.turn_off: backlight  
+    on_press:
+      then:
+        - display.page.show_previous: proxmox_display
+        - component.update: proxmox_display        
+        
+  - platform: gpio
+    name: "Button 1"
+    id: button_1
+    internal: true
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    on_click:
+      - min_length: 1500ms
+        max_length: 3000ms
+        then:
+          - switch.turn_on: backlight
     on_press:
       then:
         - display.page.show_next: proxmox_display
@@ -300,91 +422,90 @@ display:
     dc_pin: GPIO16
     reset_pin: GPIO23
 ### DO NOT CHANGE VALUES ABOVE THIS LINE ###
-    rotation: 90°
+    rotation: 270°
     update_interval: 5s
     id: proxmox_display
     
-    pages:
-      - id: page1 ### Main Page ###
+    pages:      
+      - id: page1 ### Network Info ###
         lambda: |-
-          it.print(30, 5, id(mdi_36), id(display_white), "󰻃");
-          it.printf(70, 12, id(calibri_24), id(display_grey), "%s", id(unifi_ip).state.c_str());  
-          it.print(5, 40, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰦿");
-          it.printf(45, 43, id(calibri_36), id(display_white), TextAlign::LEFT, "%.1f", id(download_speed).state);
-          it.print(235, 40, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰧇");
-          it.printf(195, 43, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.1f", id(upload_speed).state);
-          it.line(5, 80, 235, 80, id(display_darkgrey));
-          it.print(5, 90, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰌗" );
-          it.printf(45, 93, id(calibri_36), id(display_white), TextAlign::LEFT, "%.0f", id(unifi_lan_devices).state);
-          it.print(235, 90, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰖩" );
-          it.printf(195, 93, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.0f", id(unifi_wlan_devices).state);
-          
-      - id: page2 ### Performance ###
-        lambda: |-
-          it.print(30, 5, id(mdi_36), id(display_white), "󰖟");
-          it.print(70, 12, id(calibri_24), id(display_grey), "Performance");
-          it.print(235, 40, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰓅");
-          it.printf(195, 43, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.0fms", id(ping).state);
-          it.line(5, 80, 235, 80, id(display_darkgrey));
-          it.print(5, 90, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰦿");
-          it.printf(45, 93, id(calibri_36), id(display_white), TextAlign::LEFT, "%.1f", id(download_speed).state);
-          it.print(235, 90, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰧇");
-          it.printf(195, 93, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.1f", id(upload_speed).state);
-          
-      - id: page3 ### AdGuard Home ###
-        lambda: |-
-          it.print(30, 5, id(mdi_36), id(display_white), "󰕥");
-          it.print(70, 12, id(calibri_24), id(display_grey), "AdGuard Home");
-          it.print(235, 40, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰦀");
-          it.printf(195, 43, id(calibri_36), id(display_white), TextAlign::RIGHT, "%.1f%%", id(dns_blocked).state);
-          it.line(5, 80, 235, 80, id(display_darkgrey));
-          it.print(5, 90, id(mdi_36), id(display_darkgrey), TextAlign::LEFT, "󰓅" );
-          it.printf(45, 98, id(calibri_24), id(display_white), TextAlign::LEFT, "%.0fms", id(adguard_speed).state);
-          it.print(235, 90, id(mdi_36), id(display_darkgrey), TextAlign::RIGHT, "󰍉" );
-          it.printf(195, 98, id(calibri_24), id(display_white), TextAlign::RIGHT, "%.1fk", id(adguard_queries).state);
-          
-      
-      - id: page4 ### Network Info ###
-        lambda: |-
-          it.line(200, 5, 200, 115, id(display_darkgrey));
-          it.line(5, 115, 235, 115, id(display_darkgrey));
-          it.print(5,5, id(mdi_24), id(display_orange), "󰛉");
-          it.print(30, 7, id(calibri_24), id(display_white), "Proxmox Server");
+          it.line(200, 5, 200, 115, id(darkgrey));
+          it.line(5, 115, 235, 115, id(darkgrey));
+          it.print(5,5, id(mdi_24), id(orange), "$icon_proxmox");
+          it.print(30, 7, id(calibri_24), id(white), "Proxmox Server");
           if (id(proxmox_status).state) {
-            it.print(235, 5, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+            it.print(235, 5, id(mdi_24), id(green), TextAlign::RIGHT, "$icon_online");
           }
           else {
-            it.print(235, 5, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+            it.print(235, 5, id(mdi_24), id(red), TextAlign::RIGHT, "$icon_offline");
           }
           
-          it.print(5,32, id(mdi_24), id(display_lightblue), "󰟐");
-          it.print(30, 34, id(calibri_24), id(display_white), "Home Assistant");
+          it.print(5,32, id(mdi_24), id(lightblue), "$icon_homeassistant");
+          it.print(30, 34, id(calibri_24), id(white), "Home Assistant");
           if (id(ha_status).state) {
-            it.print(235, 32, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+            it.print(235, 32, id(mdi_24), id(green), TextAlign::RIGHT, "$icon_online");
           }
           else {
-            it.print(235, 32, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+            it.print(235, 32, id(mdi_24), id(red), TextAlign::RIGHT, "$icon_offline");
           }
       
-          it.print(5,59, id(mdi_24), id(display_medblue), "󰖟");
-          it.print(30, 61, id(calibri_24), id(display_white), "WAN Status");      
-          if (id(wan_status).state == "on") {
-            it.print(235, 59, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+          it.print(5,59, id(mdi_24), id(medblue), "$icon_wan");
+          it.print(30, 61, id(calibri_24), id(white), "WAN Status");      
+          if (id(wan_status).state) {
+            it.print(235, 59, id(mdi_24), id(green), TextAlign::RIGHT, "$icon_online");
           }
           else {
-            it.print(235, 59, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+            it.print(235, 59, id(mdi_24), id(red), TextAlign::RIGHT, "$icon_offline");
           }
       
-          it.print(5,86, id(mdi_24), id(display_darkgreen), "󰕥");
-          it.print(30, 88, id(calibri_24), id(display_white), "AdGuard Home");    
+          it.print(5,86, id(mdi_24), id(darkgreen), "$icon_adguard");
+          it.print(30, 88, id(calibri_24), id(white), "AdGuard Home");    
           if (id(adguard_switch).state == "on") {
-            it.print(235, 86, id(mdi_24), id(display_green), TextAlign::RIGHT, "󰗠");
+            it.print(235, 86, id(mdi_24), id(green), TextAlign::RIGHT, "$icon_online");
           }
           else {
-            it.print(235, 86, id(mdi_24), id(display_red), TextAlign::RIGHT, "󰅙");
+            it.print(235, 86, id(mdi_24), id(red), TextAlign::RIGHT, "$icon_offline");
           }
           
-          it.printf(120, 125, id(calibri_14), id(display_grey), TextAlign::CENTER, " Controller IP: %s", id(unifi_ip).state.c_str());   
+          it.printf(120, 125, id(calibri_14), id(grey), TextAlign::CENTER, " Controller IP: %s", id(unifi_ip).state.c_str());   
 
+      - id: page2 ### Home Network ###
+        lambda: |-
+          it.print(30, 5, id(mdi_36), id(white), "$icon_unifi");
+          it.printf(70, 12, id(calibri_24), id(grey), "%s", id(unifi_ip).state.c_str());  
+          it.print(5, 40, id(mdi_36), id(darkgrey), TextAlign::LEFT, "$icon_download");
+          it.printf(45, 43, id(calibri_36), id(white), TextAlign::LEFT, "%.1f", id(download_speed).state);
+          it.print(235, 40, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_upload");
+          it.printf(195, 43, id(calibri_36), id(white), TextAlign::RIGHT, "%.1f", id(upload_speed).state);
+          it.line(5, 80, 235, 80, id(darkgrey));
+          it.print(5, 90, id(mdi_36), id(darkgrey), TextAlign::LEFT, "$icon_lan" );
+          it.printf(45, 93, id(calibri_36), id(white), TextAlign::LEFT, "%.0f", id(unifi_lan_devices).state);
+          it.print(235, 90, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_wlan" );
+          it.printf(195, 93, id(calibri_36), id(white), TextAlign::RIGHT, "%.0f", id(unifi_wlan_devices).state);
+          
+      - id: page3 ### Performance ###
+        lambda: |-
+          it.print(30, 5, id(mdi_36), id(white), "$icon_speed");
+          it.print(70, 12, id(calibri_24), id(grey), "Performance");
+          it.print(235, 40, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_speed");
+          it.printf(195, 43, id(calibri_36), id(white), TextAlign::RIGHT, "%.0fms", id(esp_ping).state);
+          it.line(5, 80, 235, 80, id(darkgrey));
+          it.print(5, 90, id(mdi_36), id(darkgrey), TextAlign::LEFT, "$icon_download");
+          it.printf(45, 93, id(calibri_36), id(white), TextAlign::LEFT, "%.1f", id(download_speed).state);
+          it.print(235, 90, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_upload");
+          it.printf(195, 93, id(calibri_36), id(white), TextAlign::RIGHT, "%.1f", id(upload_speed).state);
+          
+      - id: page4 ### AdGuard Home ###
+        lambda: |-
+          it.print(30, 5, id(mdi_36), id(white), "$icon_adguard");
+          it.print(70, 12, id(calibri_24), id(grey), "AdGuard Home");
+          it.print(235, 40, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_dnsblocked");
+          it.printf(195, 43, id(calibri_36), id(white), TextAlign::RIGHT, "%.1f%%", id(dns_blocked).state);
+          it.line(5, 80, 235, 80, id(darkgrey));
+          it.print(5, 90, id(mdi_36), id(darkgrey), TextAlign::LEFT, "$icon_speed" );
+          it.printf(45, 98, id(calibri_24), id(white), TextAlign::LEFT, "%.0fms", id(adguard_speed).state);
+          it.print(235, 90, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_dnsqueries" );
+          it.printf(195, 98, id(calibri_24), id(white), TextAlign::RIGHT, "%.1fk", id(adguard_queries).state);
+          
 
       
