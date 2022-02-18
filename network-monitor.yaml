@@ -265,10 +265,12 @@ sensor:
   - platform: template
     name: "Number of Wireless Clients"
     id: clients_wireless
+    icon: "mdi:wifi"
     
   - platform: template
     name: "Number of Wired Clients"
     id: clients_wired
+    icon: "mdi:lan"
     
   - platform: ping
     ip_address: 8.8.8.8 #Change to any IP address you'd like to ping; this one is Cloudflare
@@ -277,8 +279,10 @@ sensor:
     update_interval: 5s
     loss:
       name: "Packet loss"
+      icon: "mdi:webpack"
     latency:
       name: "Latency"
+      icon: "mdi:speedometer"
       unit_of_measurement: ms
       accuracy_decimals: 3
       id: esp_ping
@@ -326,6 +330,7 @@ sensor:
 binary_sensor:
   - platform: template
     name: "Internet Connection"
+    icon: "mdi:web"
     id: wan_status
     on_press:
       then:
@@ -361,6 +366,7 @@ binary_sensor:
   
   - platform: template
     name: "Unifi API Connection"
+    icon: "mdi:api"
     id: unifi_api
     on_press:
       then:
