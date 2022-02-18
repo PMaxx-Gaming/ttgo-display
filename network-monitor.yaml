@@ -2,7 +2,7 @@ substitutions:
   unificontroller: https://192.168.1.100:8443 #SET THIS TO THE IP AND PORT OF YOUR UNIFI CONTROLLER
   username: !secret unifi_user
   password: !secret unifi_pass
-  session: !secret unifi_session
+  session: !secret unifi_session #GET THIS VALUE FROM RESPONSE HEADER WHEN LOGGING INTO CONTROLLER API (STILL WORKING ON AUTOMATING THIS)
   icon_lan: 󰌗
   icon_wan: 󰖟
   icon_wlan: 󰖩
