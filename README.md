@@ -5,7 +5,7 @@ Just place all files into their respective folders inside .../config/esphome/
 
 I've included a binary sensor that monitors the status of my Proxmox server via a pin connected to the power LED on my server, as well as another pin which switches the power button, which you can opt to remove since it's pretty specific to my setup.
 
-Everything else should work with little to no reconfiguration, provided you adjust the given IP addresses, etc.
+Everything else should work with little to no reconfiguration, provided you adjust the given IP addresses, usernames, etc. and are using AdGuard Home and a Unifi Controller.
 
 Currently this code exposes 3 switches to Home Assistant:
 - Power ON Server
