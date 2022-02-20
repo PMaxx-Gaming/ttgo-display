@@ -5,13 +5,27 @@ Just place all files into their respective folders inside .../config/esphome/
 
 I've included a binary sensor that monitors the status of my Proxmox server via a pin connected to the power LED on my server, as well as another pin which switches the power button, which you can opt to remove since it's pretty specific to my setup.
 
-Everything else should work with little to no reconfiguration, provided you set it up to match your own entity names and are running the [AdGuard Home addon](https://www.home-assistant.io/integrations/adguard/) for Home Assistant.
+Everything else should work with little to no reconfiguration, provided you adjust the given IP addresses, etc.
 
-I'm also using the [Local IP](https://www.home-assistant.io/integrations/local_ip/) Home Assistant integration to display the IP of my Unifi Controller, since the controller is running on my HA machine.
+Currently this code exposes 3 switches to Home Assistant:
+- Power ON Server
+- Power OFF Server
+- Backlight ON/OFF
 
-It should be pretty simple to customize this to use whichever integrations you prefer, and I plan to change things to get the AdGuard sensor data directly from the AdGuard Home API, rather than through Home Assistant to make the sensors a little more robust- in case HA goes down for some reason.
-
-Currently this code exposes 3 switches to Home Assistant: Power ON/OFF for my Proxmox server, and a switch to turn the screen on and off, as well as 8 sensors- Internet connection status, Unifi Controller API connection status, upload/donwload speeds, number of connected clients (WiFi/Wired), and ping latency/packet loss.
+As well as 13 sensors:
+- Internet connection Status
+- Unifi Controller API Connection Status
+- Unifi Controller IP Address
+- AdGuard Filtering Status
+- Adguard Processing Speed
+- AdGuard DNS Queries
+- AdGuard DNS Queries Blocked
+- Upload Speed
+- Download Speed
+- Number of WiFi Clients
+- Number of Wired Clients
+- Latency
+- Packet Loss
 
 <img src=https://i.imgur.com/kh35mCf.jpeg>
 <br>
