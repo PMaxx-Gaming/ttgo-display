@@ -7,11 +7,11 @@ I've included a binary sensor that monitors the status of my Proxmox server via 
 
 Everything else should work with little to no reconfiguration, provided you set it up to match your own entity names and are running the [AdGuard Home addon](https://www.home-assistant.io/integrations/adguard/) for Home Assistant.
 
-I'm also using the [Local IP](https://www.home-assistant.io/integrations/local_ip/) Home Assistant integration to display the IP of my Unifi Controller, since the controller is running on my HA machine, and the [Speedtest Integration](https://www.home-assistant.io/integrations/speedtestdotnet/) for obvious reasons.
+I'm also using the [Local IP](https://www.home-assistant.io/integrations/local_ip/) Home Assistant integration to display the IP of my Unifi Controller, since the controller is running on my HA machine.
 
-It should be pretty simple to customize this to use whichever integrations you prefer, and as this is just the first version of this code, I do plan on adjusting things to get as much sensor data from outside of Home Assistant as possible to make the sensors a little more robust- in case HA goes down for some reason.
+It should be pretty simple to customize this to use whichever integrations you prefer, and I plan to change things to get the AdGuard sensor data directly from the AdGuard Home API, rather than through Home Assistant to make the sensors a little more robust- in case HA goes down for some reason.
 
-Currently this code exposes 3 switches to Home Assistant: Power ON/OFF for my Proxmox server, and a switch to turn the screen on and off.
+Currently this code exposes 3 switches to Home Assistant: Power ON/OFF for my Proxmox server, and a switch to turn the screen on and off, as well as 8 sensors- Internet connection status, Unifi Controller API connection status, upload/donwload speeds, number of connected clients (WiFi/Wired), and ping latency/packet loss.
 
 <img src=https://i.imgur.com/kh35mCf.jpeg>
 <br>
