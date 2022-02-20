@@ -1,5 +1,6 @@
 substitutions:
   unificontroller: https://192.168.1.100:8443 #SET THIS TO THE IP AND PORT OF YOUR UNIFI CONTROLLER
+  adguardhome: http://192.168.1.100:8124 #SET THIS TO THE IP AND PORT OF ADGUARD HOME
   username: !secret unifi_user
   password: !secret unifi_pass
   session: !secret unifi_session #GET THIS VALUE FROM RESPONSE HEADER WHEN LOGGING INTO CONTROLLER API (STILL WORKING ON AUTOMATING THIS)
@@ -99,12 +100,42 @@ time:
                                   json::parse_json(data, [](JsonObject root) {
                                   uint16_t num_wifiusers_int = root["data"][0]["num_user"];
                                   uint16_t num_wiredusers_int = root["data"][3]["num_user"];
-                                  float upspeed_int = root["data"][2]["xput_up"];
-                                  float downspeed_int = root["data"][2]["xput_down"];
+                                  float upspeed_float = root["data"][2]["xput_up"];
+                                  float downspeed_float = root["data"][2]["xput_down"];
                                   id(clients_wireless).publish_state(num_wifiusers_int);
                                   id(clients_wired).publish_state(num_wiredusers_int);
-                                  id(upload_speed).publish_state(upspeed_int);
-                                  id(download_speed).publish_state(downspeed_int);
+                                  id(upload_speed).publish_state(upspeed_float);
+                                  id(download_speed).publish_state(downspeed_float);
+                                  });
+                        - http_request.get:
+                            url: ${adguardhome}/control/status
+                            verify_ssl: false
+                            headers:
+                              Authorization: !secret adguard_auth #BASE64 ENCODED USERNAME:PASSWORD
+                            on_response:
+                              - lambda: |-
+                                  std::string data = id(http_component).get_string();
+                                  json::parse_json(data, [](JsonObject root) {
+                                  bool adguard_status_bool = root["protection_enabled"];
+                                  std::string server_addr_str = root["dns_addresses"][0];
+                                  id(adguard_status).publish_state(adguard_status_bool);
+                                  id(server_address).publish_state(server_addr_str);
+                                  });
+                        - http_request.get:
+                            url: ${adguardhome}/control/stats
+                            verify_ssl: false
+                            headers:
+                              Authorization: !secret adguard_auth
+                            on_response:
+                              - lambda: |-
+                                  std::string data = id(http_component).get_string();
+                                  json::parse_json(data, [](JsonObject root) {
+                                  float dns_queries_float = root["num_dns_queries"];
+                                  float dns_blocked_float = root["num_blocked_filtering"];
+                                  float proc_time_float = root["avg_processing_time"];
+                                  id(dns_queries).publish_state(dns_queries_float);
+                                  id(dns_blocked).publish_state(dns_blocked_float);
+                                  id(adguard_speed).publish_state((proc_time_float) * 1000);
                                   });
                       else:
                         - logger.log:
@@ -253,19 +284,41 @@ switch:
     ##### SENSORS #####
 
 text_sensor:
-  - platform: homeassistant
-    entity_id: sensor.local_ip
+  - platform: template
     name: "Unifi Controller IP"
-    id: unifi_ip
-    internal: true
-  
-  - platform: homeassistant
-    entity_id: switch.adguard_filtering
-    name: "AdGuard Filtering"
-    id: adguard_switch
-    internal: true
+    id: server_address
+    icon: "mdi:ip-network"
 
 sensor: 
+  - platform: template
+    name: "AdGuard Processing Speed"
+    id: adguard_speed
+    icon: "mdi:speedometer"
+    accuracy_decimals: 1
+    unit_of_measurement: "ms"
+    
+  - platform: template
+    name: "DNS Queries Blocked"
+    id: dns_blocked_ratio
+    accuracy_decimals: 1
+    unit_of_measurement: "%"
+    icon: "mdi:magnify-close"
+    lambda: |-
+      return (id(dns_blocked).state / id(dns_queries).state * 100 );
+    
+  - platform: template
+    name: "DNS Queries Blocked"
+    id: dns_blocked
+    icon: "mdi:magnify-close"
+    accuracy_decimals: 0
+    internal: true
+    
+  - platform: template
+    name: "DNS Queries"
+    id: dns_queries
+    icon: "mdi:magnify"
+    accuracy_decimals: 0
+    
   - platform: template
     name: "Number of Wireless Clients"
     id: clients_wireless
@@ -293,7 +346,7 @@ sensor:
     accuracy_decimals: 2
     
   - platform: ping
-    ip_address: 207.164.234.36
+    ip_address: 8.8.8.8 #CHANGE TO WHATEVER YOU WANT TO PING; THIS IS SET TO CLOUDFLARE
     num_attempts: 5
     timeout: 1sec
     update_interval: 5s
@@ -308,36 +361,29 @@ sensor:
       id: esp_ping
       filters:
        - multiply: 1000
-       
-  - platform: homeassistant
-    entity_id: sensor.adguard_average_processing_speed
-    name: "AdGuard Processing Speed"
-    id: adguard_speed
-    internal: true
-    
-  - platform: homeassistant
-    entity_id: sensor.adguard_dns_queries
-    filters:
-      - multiply: 0.001
-    name: "AdGuard Queries"
-    id: adguard_queries
-    internal: true
-    
-  - platform: homeassistant
-    entity_id: sensor.adguard_dns_queries_blocked_ratio
-    name: "DNS Queries Blocked"
-    unit_of_measurement: "%"
-    id: dns_blocked
-    internal: true
-
 
     ##### Server Status and Onboard Buttons #####
 
 binary_sensor:
   - platform: template
+    name: "AdGuard Filtering"
+    id: adguard_status
+    icon: "mdi:shield-check"
+    on_press:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! ADGUARD IS ENABLED !!"
+    on_release:
+      then:
+        - logger.log:
+            level: INFO
+            format: "!! ADGUARD IS DISABLED !!"
+    
+  - platform: template
     name: "Internet Connection"
-    icon: "mdi:web"
     id: wan_status
+    icon: "mdi:web"
     on_press:
       then:
         - logger.log:
@@ -354,7 +400,7 @@ binary_sensor:
       } else {
         return false;
       }  
-        
+      
   - platform: status
     name: "Home Assistant Server Status"
     id: ha_status  
@@ -363,12 +409,12 @@ binary_sensor:
       then:
         - logger.log:
             level: INFO
-            format: "!! CONNECTION TO HOME ASSISTANT HAS BEEN ESTABLISHED !!"
+            format: "!! HOME ASSISTANT IS CONNECTED !!"
     on_release:
       then:
         - logger.log:
             level: INFO
-            format: "!! CONNECTION TO HOME ASSISTANT HAS BEEN LOST !!"
+            format: "!! HOME ASSISTANT IS DISCONNECTED !!"
   
   - platform: template
     name: "Unifi API Connection"
@@ -421,8 +467,8 @@ binary_sensor:
           - switch.turn_off: backlight  
     on_press:
       then:
-        - display.page.show_previous: proxmox_display
-        - component.update: proxmox_display        
+        - display.page.show_previous: network_display
+        - component.update: network_display        
         
   - platform: gpio
     name: "Button 1"
@@ -441,8 +487,8 @@ binary_sensor:
           - switch.turn_on: backlight
     on_press:
       then:
-        - display.page.show_next: proxmox_display
-        - component.update: proxmox_display        
+        - display.page.show_next: network_display
+        - component.update: network_display        
 
 
     ##### DISPLAY #####
@@ -456,7 +502,7 @@ display:
 ### DO NOT CHANGE VALUES ABOVE THIS LINE ###
     rotation: 270°
     update_interval: 5s
-    id: proxmox_display
+    id: network_display
     
     pages:      
       - id: page1 ### Network Info ###
@@ -492,19 +538,19 @@ display:
       
           it.print(5,86, id(mdi_24), id(darkgreen), "$icon_adguard");
           it.print(30, 88, id(calibri_24), id(white), "AdGuard Home");    
-          if (id(adguard_switch).state == "on") {
+          if (id(adguard_status).state) {
             it.print(235, 86, id(mdi_24), id(green), TextAlign::RIGHT, "$icon_online");
           }
           else {
             it.print(235, 86, id(mdi_24), id(red), TextAlign::RIGHT, "$icon_offline");
           }
           
-          it.printf(120, 125, id(calibri_14), id(grey), TextAlign::CENTER, " Controller IP: %s", id(unifi_ip).state.c_str());   
+          it.printf(120, 125, id(calibri_14), id(grey), TextAlign::CENTER, " Controller IP: %s", id(server_address).state.c_str());   
 
       - id: page2 ### Home Network ###
         lambda: |-
           it.print(30, 5, id(mdi_36), id(white), "$icon_unifi");
-          it.printf(70, 12, id(calibri_24), id(grey), "%s", id(unifi_ip).state.c_str());  
+          it.printf(70, 12, id(calibri_24), id(grey), "%s", id(server_address).state.c_str());  
           it.print(5, 40, id(mdi_36), id(darkgrey), TextAlign::LEFT, "$icon_download");
           it.printf(45, 43, id(calibri_36), id(white), TextAlign::LEFT, "%.1f", id(download_speed).state);
           it.print(235, 40, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_upload");
@@ -532,12 +578,10 @@ display:
           it.print(30, 5, id(mdi_36), id(white), "$icon_adguard");
           it.print(70, 12, id(calibri_24), id(grey), "AdGuard Home");
           it.print(235, 40, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_dnsblocked");
-          it.printf(195, 43, id(calibri_36), id(white), TextAlign::RIGHT, "%.1f%%", id(dns_blocked).state);
+          it.printf(195, 43, id(calibri_36), id(white), TextAlign::RIGHT, "%.1f%%", id(dns_blocked_ratio).state);
           it.line(5, 80, 235, 80, id(darkgrey));
           it.print(5, 90, id(mdi_36), id(darkgrey), TextAlign::LEFT, "$icon_speed" );
           it.printf(45, 98, id(calibri_24), id(white), TextAlign::LEFT, "%.0fms", id(adguard_speed).state);
           it.print(235, 90, id(mdi_36), id(darkgrey), TextAlign::RIGHT, "$icon_dnsqueries" );
-          it.printf(195, 98, id(calibri_24), id(white), TextAlign::RIGHT, "%.1fk", id(adguard_queries).state);
+          it.printf(195, 98, id(calibri_24), id(white), TextAlign::RIGHT, "%.1fk", id(dns_queries).state * 0.001);
           
-
-      
