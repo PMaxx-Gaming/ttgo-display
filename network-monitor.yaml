@@ -111,7 +111,7 @@ time:
                             url: ${adguardhome}/control/status
                             verify_ssl: false
                             headers:
-                              Authorization: !secret adguard_auth #BASE64 ENCODED USERNAME:PASSWORD
+                              Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
                             on_response:
                               - lambda: |-
                                   std::string data = id(http_component).get_string();
@@ -125,7 +125,7 @@ time:
                             url: ${adguardhome}/control/stats
                             verify_ssl: false
                             headers:
-                              Authorization: !secret adguard_auth
+                              Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
                             on_response:
                               - lambda: |-
                                   std::string data = id(http_component).get_string();
