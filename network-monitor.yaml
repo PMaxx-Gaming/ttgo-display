@@ -99,8 +99,12 @@ time:
                                   json::parse_json(data, [](JsonObject root) {
                                   uint16_t num_wifiusers_int = root["data"][0]["num_user"];
                                   uint16_t num_wiredusers_int = root["data"][3]["num_user"];
+                                  float upspeed_int = root["data"][2]["xput_up"];
+                                  float downspeed_int = root["data"][2]["xput_down"];
                                   id(clients_wireless).publish_state(num_wifiusers_int);
                                   id(clients_wired).publish_state(num_wiredusers_int);
+                                  id(upload_speed).publish_state(upspeed_int);
+                                  id(download_speed).publish_state(downspeed_int);
                                   });
                       else:
                         - logger.log:
@@ -266,14 +270,30 @@ sensor:
     name: "Number of Wireless Clients"
     id: clients_wireless
     icon: "mdi:wifi"
+    accuracy_decimals: 0
     
   - platform: template
     name: "Number of Wired Clients"
     id: clients_wired
     icon: "mdi:lan"
+    accuracy_decimals: 0
+    
+  - platform: template
+    name: "Upload Speed"
+    id: upload_speed
+    icon: "mdi:speedometer"
+    unit_of_measurement: "Mbit/s"
+    accuracy_decimals: 2
+    
+  - platform: template
+    name: "Download Speed"
+    id: download_speed
+    icon: "mdi:speedometer"
+    unit_of_measurement: "Mbit/s"
+    accuracy_decimals: 2
     
   - platform: ping
-    ip_address: 8.8.8.8 #Change to any IP address you'd like to ping; this one is Cloudflare
+    ip_address: 207.164.234.36
     num_attempts: 5
     timeout: 1sec
     update_interval: 5s
@@ -284,7 +304,7 @@ sensor:
       name: "Latency"
       icon: "mdi:speedometer"
       unit_of_measurement: ms
-      accuracy_decimals: 3
+      accuracy_decimals: 0
       id: esp_ping
       filters:
        - multiply: 1000
@@ -301,20 +321,6 @@ sensor:
       - multiply: 0.001
     name: "AdGuard Queries"
     id: adguard_queries
-    internal: true
-    
-  - platform: homeassistant
-    entity_id: sensor.speedtest_download
-    name: "Download Speed"
-    unit_of_measurement: "Mbit/s"
-    id: download_speed
-    internal: true
-    
-  - platform: homeassistant
-    entity_id: sensor.speedtest_upload
-    name: "Upload Speed"
-    unit_of_measurement: "Mbit/s"
-    id: upload_speed
     internal: true
     
   - platform: homeassistant
