@@ -402,7 +402,7 @@ binary_sensor:
       }  
       
   - platform: status
-    name: "Home Assistant Server Status"
+    name: "Home Assistant Status"
     id: ha_status  
     internal: true
     on_press:
@@ -511,7 +511,7 @@ display:
           it.line(5, 115, 235, 115, id(darkgrey));
           it.print(5,5, id(mdi_24), id(orange), "$icon_proxmox");
           it.print(30, 7, id(calibri_24), id(white), "Proxmox Server");
-          if (id(proxmox_status).state) {
+          if (id(server_status).state) {
             it.print(235, 5, id(mdi_24), id(green), TextAlign::RIGHT, "$icon_online");
           }
           else {
