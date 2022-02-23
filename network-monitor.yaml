@@ -80,7 +80,7 @@ time:
               size_t numberOfHeaders = 1;
               HTTPClient http;
               http.begin(client,"${unificontroller}/api/login"); 
-              http.collectHeaders(headerkeys, 2);
+              http.collectHeaders(headerkeys, numberOfHeaders);
               http.addHeader("Content-Type", "application/json");
               DynamicJsonDocument auth(96);
               auth["username"] = "${unifiuser}";
