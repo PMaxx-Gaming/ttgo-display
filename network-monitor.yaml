@@ -1,8 +1,8 @@
 substitutions:
   unificontroller: https://192.168.1.100:8443 #SET THIS TO THE IP AND PORT OF YOUR UNIFI CONTROLLER
   adguardhome: http://192.168.1.100:8124 #SET THIS TO THE IP AND PORT OF ADGUARD HOME
-  username: !secret unifi_user
-  password: !secret unifi_pass
+  unifiuser: !secret unifiuser
+  unifipass: !secret unifipass
   session: !secret unifi_session #GET THIS VALUE FROM RESPONSE HEADER WHEN LOGGING INTO CONTROLLER API (STILL WORKING ON AUTOMATING THIS)
   icon_lan: 󰌗
   icon_wan: 󰖟
@@ -20,7 +20,9 @@ substitutions:
   icon_offline: 󰅙 
 
 globals:
-  - id: unifisession
+  - id: responseHeader
+    type: std::string
+  - id: session
     type: std::string
     initial_value: ${session}
   
@@ -71,77 +73,103 @@ time:
     on_time:
       - seconds: /30
         then:
-          - http_request.post:
-              url: ${unificontroller}/api/login
+          - lambda: |-
+              WiFiClientSecure client;
+              client.setInsecure();
+              const char* headerkeys[] = {"Set-Cookie"};
+              size_t numberOfHeaders = 1;
+              HTTPClient http;
+              http.begin(client,"${unificontroller}/api/login"); 
+              http.collectHeaders(headerkeys, 2);
+              http.addHeader("Content-Type", "application/json");
+              DynamicJsonDocument auth(96);
+              auth["username"] = "${unifiuser}";
+              auth["password"] = "${unifipass}";
+              String PostData;
+              serializeJson(auth, PostData);
+              int httpCode = http.POST(PostData);
+              if (httpCode == 200) {
+              id(unifi_api).publish_state(true);
+              }else{
+              id(unifi_api).publish_state(false);
+              };
+              String headerCookie = http.header("Set-Cookie");  //STILL NEED TO FIX THIS TO GET CORRECT COOKIE
+              id(responseHeader) = headerCookie.c_str(); 
+              http.end();  
+          - delay: 1s
+          - if:
+              condition:
+                binary_sensor.is_on: unifi_api
+              then:
+                - lambda: "id(unifises).publish_state(id(responseHeader));"
+                - logger.log:
+                    level: INFO
+                    format: "!! FETCHING UNIFI SENSOR DATA !!"
+                - http_request.get:
+                    url: ${unificontroller}/api/s/default/stat/health
+                    verify_ssl: false
+                    headers:
+                      Cookie: "id(session)" #WILL BE REPLACED BY responseHeader WHEN FINISHED
+                    on_response:
+                      - lambda: |-
+                          std::string data = id(http_component).get_string();
+                          json::parse_json(data, [](JsonObject root) {
+                          uint16_t num_wifiusers_int = root["data"][0]["num_user"];
+                          uint16_t num_wiredusers_int = root["data"][3]["num_user"];
+                          float upspeed_float = root["data"][2]["xput_up"];
+                          float downspeed_float = root["data"][2]["xput_down"];
+                          id(clients_wireless).publish_state(num_wifiusers_int);
+                          id(clients_wired).publish_state(num_wiredusers_int);
+                          id(upload_speed).publish_state(upspeed_float);
+                          id(download_speed).publish_state(downspeed_float);
+                          });
+              else:
+               - logger.log:
+                    level: INFO
+                    format: "!! NOT CONNECTED TO UNIFI CONTROLLER API !!"
+          - http_request.get:
+              url: ${adguardhome}/control/status
               verify_ssl: false
-              json: |-
-                root["username"] = ${username};
-                root["password"] = ${password};
+              headers:
+                Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
               on_response:
-                then:
-                  - if:
-                      condition:
-                        lambda: |-
-                          return status_code == 200;
-                      then:
-                        - logger.log:
-                            level: INFO
-                            format: "!! CONNECTION TO UNIFI CONTROLLER SUCCEEDED, FETCHING SENSOR DATA !!"
-                        - lambda: "id(unifi_api).publish_state(true);"
-                        - delay: 1s                     
-                        - http_request.get:
-                            url: ${unificontroller}/api/s/default/stat/health
-                            verify_ssl: false
-                            headers:
-                              Cookie: !lambda return id(unifisession).c_str();
-                            on_response:
-                              - lambda: |-
-                                  std::string data = id(http_component).get_string();
-                                  json::parse_json(data, [](JsonObject root) {
-                                  uint16_t num_wifiusers_int = root["data"][0]["num_user"];
-                                  uint16_t num_wiredusers_int = root["data"][3]["num_user"];
-                                  float upspeed_float = root["data"][2]["xput_up"];
-                                  float downspeed_float = root["data"][2]["xput_down"];
-                                  id(clients_wireless).publish_state(num_wifiusers_int);
-                                  id(clients_wired).publish_state(num_wiredusers_int);
-                                  id(upload_speed).publish_state(upspeed_float);
-                                  id(download_speed).publish_state(downspeed_float);
-                                  });
-                        - http_request.get:
-                            url: ${adguardhome}/control/status
-                            verify_ssl: false
-                            headers:
-                              Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
-                            on_response:
-                              - lambda: |-
-                                  std::string data = id(http_component).get_string();
-                                  json::parse_json(data, [](JsonObject root) {
-                                  bool adguard_status_bool = root["protection_enabled"];
-                                  std::string server_addr_str = root["dns_addresses"][0];
-                                  id(adguard_status).publish_state(adguard_status_bool);
-                                  id(server_address).publish_state(server_addr_str);
-                                  });
-                        - http_request.get:
-                            url: ${adguardhome}/control/stats
-                            verify_ssl: false
-                            headers:
-                              Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
-                            on_response:
-                              - lambda: |-
-                                  std::string data = id(http_component).get_string();
-                                  json::parse_json(data, [](JsonObject root) {
-                                  float dns_queries_float = root["num_dns_queries"];
-                                  float dns_blocked_float = root["num_blocked_filtering"];
-                                  float proc_time_float = root["avg_processing_time"];
-                                  id(dns_queries).publish_state(dns_queries_float);
-                                  id(dns_blocked).publish_state(dns_blocked_float);
-                                  id(adguard_speed).publish_state((proc_time_float) * 1000);
-                                  });
-                      else:
-                        - logger.log:
-                            level: INFO
-                            format: "!! CONNECTION TO UNIFI CONTROLLER FAILED !!"
-                        - lambda: "id(unifi_api).publish_state(false);"
+                - lambda: |-
+                    std::string data = id(http_component).get_string();
+                    json::parse_json(data, [](JsonObject root) {
+                    std::string server_addr_str = root["dns_addresses"][0];
+                    id(server_address).publish_state(server_addr_str);
+                    });
+          - logger.log:
+              level: INFO
+              format: "!! FETCHING ADGUARD SENSOR DATA !!"
+          - http_request.get:
+              url: ${adguardhome}/control/status
+              verify_ssl: false
+              headers:
+                Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
+              on_response:
+                - lambda: |-
+                    std::string data = id(http_component).get_string();
+                    json::parse_json(data, [](JsonObject root) {
+                    bool adguard_status_bool = root["protection_enabled"];
+                    id(adguard_status).publish_state(adguard_status_bool);
+                    });
+          - http_request.get:
+              url: ${adguardhome}/control/stats
+              verify_ssl: false
+              headers:
+                Authorization: !secret adguard_auth #BASE64 ENCODED "USERNAME:PASSWORD"
+              on_response:
+                - lambda: |-
+                    std::string data = id(http_component).get_string();
+                    json::parse_json(data, [](JsonObject root) {
+                    float dns_queries_float = root["num_dns_queries"];
+                    float dns_blocked_float = root["num_blocked_filtering"];
+                    float proc_time_float = root["avg_processing_time"];
+                    id(dns_queries).publish_state(dns_queries_float);
+                    id(dns_blocked).publish_state(dns_blocked_float);
+                    id(adguard_speed).publish_state((proc_time_float) * 1000);
+                    });
 
     
     ##### FONTS #####
@@ -288,6 +316,12 @@ text_sensor:
     name: "Unifi Controller IP"
     id: server_address
     icon: "mdi:ip-network"
+  - platform: template
+    name: "Unifi Session Cookie"
+    id: unifises
+    filters:
+      - substitute:
+        - "; Path=/; Secure -> "    
 
 sensor: 
   - platform: template
