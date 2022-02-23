@@ -319,6 +319,7 @@ text_sensor:
   - platform: template
     name: "Unifi Session Cookie"
     id: unifises
+    internal: true
     filters:
       - substitute:
         - "; Path=/; Secure -> "    
